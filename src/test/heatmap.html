@@ -1,0 +1,68 @@
+<html>
+<head>
+  <title>Heatmap Test</title>
+  <style>
+    * {
+      font-family: arial;
+    }
+    #heatmapContainer {
+      height: 500px;
+      width: 500px;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <form id="situation">
+    Balls
+    <select id="balls">
+      <option value="0">0</option>
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+    </select>
+    Strikes
+    <select id="strikes">
+      <option value="0">0</option>
+      <option value="1">1</option>
+      <option value="2">2</option>
+    </select>
+    Pitcher
+    <select id="p_throws">
+      <option value="R">R</option>
+      <option value="L">L</option>
+    </select>
+    Battter
+    <select id="b_bats">
+      <option value="R">R</option>
+      <option value="L">L</option>
+    </select>
+    <input type="submit">
+  </form>
+  <div id="heatmapContainer"></div>
+  <script src="../js/heatmap.js"></script>
+  <script type="text/javascript">
+    function refreshHeatmap(e) {
+      var myHeatmap,
+        containerElement,
+        request;
+
+      e.preventDefault;
+
+      request = {
+        balls: parseInt(document.querySelector('#balls').value),
+        strikes: parseInt(document.querySelector('#strikes').value),
+        p_throws: document.querySelector('#p_throws').value,
+        b_bats: document.querySelector('#b_bats').value
+      };
+      containerElement = document.querySelector( '#heatmapContainer');
+      myHeatmap = new window.heatmap( containerElement, request );
+      myHeatmap.load();
+
+      return false;
+    }
+    document.querySelector('#situation').onsubmit = refreshHeatmap;
+    
+  </script>
+</body>
+</html>
