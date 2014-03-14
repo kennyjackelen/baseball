@@ -1,116 +1,125 @@
 <?php
 
-  //keep it stupid
-  define(NUM_BINS_X, 28);
-  define(NUM_BINS_Z, 28);
-  define(PX_MIN, -3.5);
-  define(PX_MAX, 3.5);
+  define(GAMEDAY_DB, 'gameday');
+  define(PITCH_COLLECTION, 'pitches');
+  define(NUM_BINS_X, 5 / (6 / 12));  // 5 feet divided into 6 inch buckets
+  define(NUM_BINS_Z, 5 / (6 / 12));
+  define(PX_MIN, -2.5);
+  define(PX_MAX, 2.5);
   define(PZ_MIN, 0);
-  define(PZ_MAX, 7);
+  define(PZ_MAX, 5);
+  define(HOME_PLATE_WIDTH, 17 / 12); // 17 inches wide
+  define(STRIKE_ZONE_TOP, 3.5); // 3.5 feet high
+  define(STRIKE_ZONE_BOTTOM, 1.5); // 1.5 feet high
 
-  header('Content-type: application/json');
-  # get inputs
-  $request = json_decode(file_get_contents('php://input'));
-  $balls = $request->balls;
-  $strikes = $request->strikes;
-  $b_bats = $request->b_bats;
-  $p_throws = $request->p_throws;
-  $method = $request->method;
-
-  $response = array();
-  $bin_size_x = ( PX_MAX - PX_MIN ) / NUM_BINS_X;
-  $bin_size_z = ( PZ_MAX - PZ_MIN ) / NUM_BINS_Z;
-  # home plate is 17 inches wide
-  $response['zone_left'] = ( (-8.5 / 12) - PX_MIN ) / $bin_size_x;
-  $response['zone_right'] = ( (8.5 / 12) - PX_MIN ) / $bin_size_x;
-  # use 1.5 feet for bottom of zone, 3.5 feet for top
-  $response['zone_top'] = ( PZ_MAX - 3.5 ) / $bin_size_z;
-  $response['zone_bottom'] = ( PZ_MAX - 1.5 ) / $bin_size_z;
-
-  $rawBinCounts = array();
-  $collectionOfBinCounts = array();
-  $m = new MongoClient();
-  $db = $m->gameday;
-  $pitches = $db->pitches;
-
-  $query = array('balls' => $balls, 'strikes' => $strikes, 'p_throws' => $p_throws, 'stand' => $b_bats);
-  #$query = array('balls' => 0, 'strikes' => 2, 'p_throws' => 'L', 'stand' => 'L');
-  $fields = array('px' => true, 'pz' => true);
-  $results = $pitches->find($query, $fields);
-  $count = 0;
-
-  $newheatmap = array();
-  for ($i=0; $i<NUM_BINS_X; $i++)
+  function main()
   {
-    $newheatmap[] = array();
-    for ($j=0; $j<NUM_BINS_Z; $j++)
-    {
-      $newheatmap[$i][] = 0;
-    }
+    $query = buildQueryFromInput();
+    $results = queryDatabase( $query );
+    buildResponse( $results, $response );
+    writeResponse($response);
   }
 
-  foreach ($results as $pitch)
+  function buildQueryFromInput()
   {
-    try
-    {
-      $xbin = GetHorizontalBin( $pitch['px'] );
-      $zbin = GetVerticalBin( $pitch['pz'] );
-      //$rawBinCounts[$xbin][$zbin]++;
-      if ($count % 5 == 1) {
-        $newheatmap[(int)$xbin][(int)$zbin]++;
-      }
-      $count++;
-    }
-    catch (Exception $e)
-    {
-      continue;
-    }
+    $fileContents = file_get_contents( 'php://input' );
+    $request = json_decode( $fileContents );
+    $query = array(
+      'balls' => (int)$request->balls,
+      'strikes' => (int)$request->strikes,
+      'p_throws' => $request->p_throws,
+      'stand' => $request->b_bats );
+    return $query;
   }
-/*
-  foreach ($rawBinCounts as $colNum => $cells)
+
+  function queryDatabase( $query )
+  {  
+    $m = new MongoClient();
+    $pitches = $m->selectCollection( GAMEDAY_DB, PITCH_COLLECTION );
+    $fields = array( 'px' => true, 'pz' => true );
+    return $pitches->find($query, $fields);
+  }
+
+  function buildResponse( $results, &$response )
   {
-    foreach ($cells as $rowNum => $count)
+    $heatmap = binResults( $results );
+    calculateMaxMin( $heatmap, $max, $min );
+    $strikezone = calculateStrikeZone();
+    $response = array(
+      'heatmap' => $heatmap,
+      'strikezone' => $strikezone,
+      'max' => $max,
+      'min' => $min );
+  } 
+
+  function binResults( $results )
+  {
+    $heatmap = initializeHeatmap();
+    foreach ($results as $pitch)
     {
-      if ($count > 0)
+      try
       {
-        $collectionOfBinCounts[] = $count;
+        $xbin = GetHorizontalBin( $pitch['px'] );
+        $zbin = GetVerticalBin( $pitch['pz'] );
+        $heatmap[ (int)$xbin ][ (int)$zbin ]++;
+      }
+      catch (Exception $e)
+      {
+        continue;
       }
     }
+    return $heatmap;
   }
 
-  $xbar = array_sum($collectionOfBinCounts) / count($collectionOfBinCounts);
-  $stdev = stats_standard_deviation($collectionOfBinCounts);
-  $min = min($collectionOfBinCounts);
-  $max = max($collectionOfBinCounts);
-
-  $heatmap = array();
-  $heatmap_min_val = 10000;
-  $heatmap_max_val = -10000;
-
-  for ($i=0; $i<NUM_BINS_X; $i++)
+  function initializeHeatmap()
   {
-    $heatmap[] = array();
-    for ($j=0; $j<NUM_BINS_Z; $j++)
+    $heatmap = array();
+    for ($i=0; $i<NUM_BINS_X; $i++)
     {
-      //$heatmap[$i][] = stats_cdf_normal(($rawBinCounts[(string)$i][(string)$j] - $xbar) / $stdev, 0, 1, 1);
-      $heatmap[$i][] = ( $rawBinCounts[(string)$i][(string)$j] - $min ) / ( $max - $min);
-      if ($heatmap[$i][$j] > $heatmap_max_val)
+      $heatmap[] = array();
+      for ($j=0; $j<NUM_BINS_Z; $j++)
       {
-        $heatmap_max_val = $heatmap[$i][$j];
+        $heatmap[$i][] = 0;
       }
-      if ($heatmap[$i][$j] < $heatmap_min_val)
+    }
+    return $heatmap;
+  }
+
+  function calculateMaxMin( $heatmap, &$max, &$min )
+  {
+    $min = INF;
+    $max = 0;
+    for ($i=0; $i<NUM_BINS_X; $i++)
+    {
+      for ($j=0; $j<NUM_BINS_Z; $j++)
       {
-        $heatmap_min_val = $heatmap[$i][$j];
+        $value = $heatmap[$i][$j];
+        if ($value > $max) {
+          $max = $value;
+        }
+        if ($value > 0 and $value < $min) {
+          $min = $value;
+        }
       }
     }
   }
-*/
-  $response['heatmap'] = $newheatmap;
-  $response['n_pitches'] = $count / 5;
-  //$response['minHeatmapVal'] = $heatmap_min_val;
-  //$response['maxHeatmapVal'] = $heatmap_max_val;
 
-  echo json_encode( $response );
+  function calculateStrikeZone()
+  {
+    $bin_size_x = ( PX_MAX - PX_MIN ) / NUM_BINS_X;
+    $bin_size_z = ( PZ_MAX - PZ_MIN ) / NUM_BINS_Z;
+    $strike_zone['top'] = ( PZ_MAX - STRIKE_ZONE_TOP ) / $bin_size_z;
+    $strike_zone['bottom'] = ( PZ_MAX - STRIKE_ZONE_BOTTOM ) / $bin_size_z;
+    $strike_zone['left'] = ( -0.5 * HOME_PLATE_WIDTH - PX_MIN ) / $bin_size_x;
+    $strike_zone['right'] = ( 0.5 * HOME_PLATE_WIDTH - PX_MIN ) / $bin_size_x;
+    return $strike_zone;
+  }
+
+  function writeResponse( $response )
+  {
+    header( 'Content-type: application/json' );
+    echo json_encode( $response );
+  }
 
   function GetHorizontalBin($px)
   {
@@ -131,5 +140,7 @@
     $bin_size = ( PZ_MAX - PZ_MIN ) / NUM_BINS_Z;
     return floor( ( PZ_MAX - $pz ) / $bin_size );
   }
+
+  main();
 
 ?>

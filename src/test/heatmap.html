@@ -37,7 +37,7 @@
       <option value="R">R</option>
       <option value="L">L</option>
     </select>
-    <input type="submit">
+    <input type="submit" id="btnSubmit" value="Go!" >
   </form>
   <div id="heatmapContainer"></div>
   <script src="../js/heatmap.js"></script>
@@ -45,9 +45,13 @@
     function refreshHeatmap(e) {
       var myHeatmap,
         containerElement,
-        request;
+        request,
+        submitButton;
 
       e.preventDefault;
+      submitButton = document.querySelector('#btnSubmit');
+      submitButton.disabled = true;
+      submitButton.value = "Loading...";
 
       request = {
         balls: parseInt(document.querySelector('#balls').value),
@@ -57,9 +61,14 @@
       };
       containerElement = document.querySelector( '#heatmapContainer');
       myHeatmap = new window.heatmap( containerElement, request );
-      myHeatmap.load();
+      myHeatmap.load( heatmapCallback );
 
       return false;
+    }
+    function heatmapCallback() {
+      submitButton = document.querySelector('#btnSubmit');
+      submitButton.disabled = false;
+      submitButton.value = "Go!";
     }
     document.querySelector('#situation').onsubmit = refreshHeatmap;
     
