@@ -7,7 +7,7 @@ To access mongodb from PHP, you need to install the PHP driver for mongodb:
 * Add `extension=mongo.so` to php.ini
 
 This also uses the stats package for PHP.
-* `pecl install mongo`
+* `pecl install stats`
 * Add `extension=stats.so` to php.ini
 
 To use `pecl`, install this:
